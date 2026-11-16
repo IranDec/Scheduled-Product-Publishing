@@ -8,7 +8,7 @@ a whole collection online at once - per product, in bulk, and per shop.
 | | |
 |---|---|
 | Module name | `productscheduler` |
-| Version | 1.0.0 (see [CHANGELOG.md](CHANGELOG.md)) |
+| Version | 1.1.0 (see [CHANGELOG.md](CHANGELOG.md)) |
 | PrestaShop | 1.7.x, 8.x, 9.x |
 | PHP | 5.6 - 8.4 (whatever your PrestaShop version supports) |
 | Tested on | PrestaShop 1.7.8.11 (PHP 7.4) and 9.0.3 (PHP 8.4), single shop and multistore |
@@ -87,6 +87,20 @@ Without a cron job the module still works: due schedules run after the next page
 back office was delivered. On a quiet shop that can be minutes later than planned. **For exact
 times, add a cron job that runs every minute.** The module settings page shows ready-to-copy lines.
 
+**Easiest:** *Modules > Scheduled Product Publishing > Configure > Cron job*. Choose **how often**
+(every minute, every 5 / 10 / 15 / 30 minutes, every hour at a minute, once a day at a time, or a
+custom cron expression) and **how it is called** (curl, wget or PHP command line). The page shows
+the finished crontab line to copy and how late products can change with that choice. *Save my cron
+schedule* remembers the choice (it is also used by the "cron job active" check). The module cannot
+change the server's crontab itself - paste the line there or into your hosting panel's cron jobs.
+
+| Choice | Products change | Good for |
+|---|---|---|
+| Every minute | within a minute | launches at an exact time (recommended) |
+| Every 5-30 minutes | up to 5-30 minutes late | servers / hosting plans with a minimum interval |
+| Every hour / once a day | at the next full run | shops that only publish once a day, e.g. at 06:00 |
+| Custom | at the first run of your expression | e.g. `*/10 6-22 * * *` (every 10 minutes, 6:00-22:59) |
+
 **Option A - URL** (works everywhere, also with hosting panels and online cron services):
 
 ```cron
@@ -164,7 +178,7 @@ Without multistore none of this is visible.
 | Setting | Default | Meaning |
 |---|---|---|
 | Also run on visits | Yes | Fallback runner after shop / back-office pages (at most once a minute). Harmless together with a cron job. |
-| E-mail after each run | No | Report of published / unpublished products and failures. |
+| E-mail after each run | No | Report of published / unpublished products and failures (*Send a test report e-mail* shows an example). |
 | Report e-mail | (empty) | Recipient; empty = shop e-mail address. |
 | Keep history | 180 days | Done, failed and cancelled entries older than this are deleted (daily). 0 = keep forever. |
 | Changes per run | 100 | Upper limit per run; the rest follows in the next run. |

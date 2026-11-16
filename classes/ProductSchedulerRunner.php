@@ -308,55 +308,94 @@ class ProductSchedulerRunner
 
     private static function notify(array $summary)
     {
-        try {
-            if (!(int) Configuration::getGlobalValue('PRODUCTSCHEDULER_NOTIFY')) {
-                return;
-            }
-            $to = trim((string) Configuration::getGlobalValue('PRODUCTSCHEDULER_NOTIFY_EMAIL'));
-            if ($to === '') {
-                $to = (string) Configuration::get('PS_SHOP_EMAIL');
-            }
-            if (!Validate::isEmail($to)) {
-                return;
-            }
+        if ((int) Configuration::getGlobalValue('PRODUCTSCHEDULER_NOTIFY')) {
+            self::sendReport($summary);
+        }
+    }
 
+    /** The report address: the configured one, or the shop e-mail address ('' when none is valid). */
+    public static function reportRecipient()
+    {
+        $to = trim((string) Configuration::getGlobalValue('PRODUCTSCHEDULER_NOTIFY_EMAIL'));
+        if ($to === '') {
+            $to = (string) Configuration::get('PS_SHOP_EMAIL');
+        }
+
+        return Validate::isEmail($to) ? $to : '';
+    }
+
+    /**
+     * Sends the run report (also the settings page's test e-mail). Items may carry a 'name' for
+     * products that do not exist (test e-mail). Never throws.
+     *
+     * @return bool sent
+     */
+    public static function sendReport(array $summary)
+    {
+        try {
+            $to = self::reportRecipient();
             $module = Module::getInstanceByName('productscheduler');
+            if ($to === '' || !$module) {
+                return false;
+            }
             $mailDir = _PS_MODULE_DIR_ . 'productscheduler/mails/';
             $id_lang = (int) Configuration::get('PS_LANG_DEFAULT');
             if (!is_file($mailDir . Language::getIsoById($id_lang) . '/productscheduler_report.txt')) {
                 $id_lang = (int) Language::getIdByIso('en');
             }
-            if (!$id_lang || !$module) {
-                return;
+            if (!$id_lang) {
+                return false;
             }
+
+            $publishLabel = $module->l('Publish', 'productscheduler');
+            $unpublishLabel = $module->l('Unpublish', 'productscheduler');
+            $okLabel = $module->l('Done', 'productscheduler');
+            $failLabel = $module->l('Failed', 'productscheduler');
+            $cell = 'padding:10px 12px;border-bottom:1px solid #edf1f3;font-size:13px;vertical-align:top;';
+            $pill = 'display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:bold;';
 
             $htmlRows = '';
             $textRows = '';
             foreach ($summary['items'] as $item) {
-                $name = Product::getProductName((int) $item['id_product'], null, $id_lang);
-                $label = ($item['action'] === ProductSchedulerRepository::ACTION_PUBLISH ? 'Publish' : 'Unpublish');
-                $state = $item['ok'] ? 'OK' : 'FAILED';
+                $name = isset($item['name']) ? $item['name'] : Product::getProductName((int) $item['id_product'], null, $id_lang);
+                $publish = $item['action'] === ProductSchedulerRepository::ACTION_PUBLISH;
+                $label = $publish ? $publishLabel : $unpublishLabel;
+                $state = $item['ok'] ? $okLabel : $failLabel;
                 $htmlRows .= '<tr>'
-                    . '<td style="padding:6px 8px;border-bottom:1px solid #eee">#' . (int) $item['id_product'] . ' ' . htmlspecialchars((string) $name, ENT_QUOTES, 'UTF-8') . '</td>'
-                    . '<td style="padding:6px 8px;border-bottom:1px solid #eee">' . $label . '</td>'
-                    . '<td style="padding:6px 8px;border-bottom:1px solid #eee;color:' . ($item['ok'] ? '#2e7d32' : '#c62828') . '"><strong>' . $state . '</strong></td>'
-                    . '<td style="padding:6px 8px;border-bottom:1px solid #eee">' . htmlspecialchars($item['message'], ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td style="' . $cell . '"><strong>' . htmlspecialchars((string) $name, ENT_QUOTES, 'UTF-8') . '</strong>'
+                    . ((int) $item['id_product'] ? '<br><span style="color:#8a9ba1;font-size:12px">ID ' . (int) $item['id_product'] . '</span>' : '') . '</td>'
+                    . '<td style="' . $cell . '"><span style="' . $pill . ($publish ? 'background:#e8f5e9;color:#2e7d32' : 'background:#eceff1;color:#455a64') . '">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span></td>'
+                    . '<td style="' . $cell . '"><span style="' . $pill . ($item['ok'] ? 'background:#e8f5e9;color:#2e7d32' : 'background:#fdecea;color:#c62828') . '">' . htmlspecialchars($state, ENT_QUOTES, 'UTF-8') . '</span></td>'
+                    . '<td style="' . $cell . 'color:#5b6b71">' . htmlspecialchars($module->messageText($item['message']), ENT_QUOTES, 'UTF-8') . '</td>'
                     . '</tr>';
-                $textRows .= '- #' . (int) $item['id_product'] . ' ' . $name . ' | ' . $label . ' | ' . $state . ' | ' . $item['message'] . "\n";
+                $textRows .= '- ' . ((int) $item['id_product'] ? '#' . (int) $item['id_product'] . ' ' : '') . $name . ' | ' . $label . ' | ' . $state . ' | ' . $module->messageText($item['message']) . "\n";
             }
 
-            Mail::Send(
+            $base = Tools::getShopDomainSsl(true) . __PS_BASE_URI__;
+            $adminUrl = self::adminListUrl($base);
+
+            return (bool) Mail::Send(
                 $id_lang,
                 'productscheduler_report',
-                $module->l('Scheduled publishing report', 'productscheduler') . ': ' . (int) $summary['done'] . ' / ' . (int) $summary['processed'],
+                ($summary['source'] === 'test' ? '[TEST] ' : '') . $module->l('Scheduled publishing report', 'productscheduler')
+                    . ': ' . (int) $summary['done'] . ' / ' . (int) $summary['processed'],
                 [
                     '{run_time}' => $summary['time'],
                     '{done}' => (int) $summary['done'],
                     '{failed}' => (int) $summary['failed'],
+                    '{processed}' => (int) $summary['processed'],
                     '{rows_html}' => $htmlRows,
                     '{rows_txt}' => $textRows,
+                    '{module_name}' => $module->displayName,
+                    '{module_version}' => $module->version,
+                    '{module_logo}' => $base . 'modules/productscheduler/logo.png',
+                    '{author_name}' => ProductScheduler::AUTHOR_NAME,
+                    '{author_url}' => ProductScheduler::AUTHOR_URL,
+                    '{author_site}' => ProductScheduler::AUTHOR_SITE,
+                    '{admin_url}' => $adminUrl !== '' ? $adminUrl : $base,
+                    '{year}' => date('Y'),
                 ],
-                $to,
+                self::reportRecipient(),
                 null,
                 null,
                 null,
@@ -368,7 +407,28 @@ class ProductSchedulerRunner
             );
         } catch (Exception $e) {
             self::log('report e-mail not sent: ' . $e->getMessage(), 2);
+        } catch (Throwable $e) {
+            self::log('report e-mail not sent: ' . $e->getMessage(), 2);
         }
+
+        return false;
+    }
+
+    /** Back-office list page (without token: PrestaShop asks once to confirm the link). */
+    private static function adminListUrl($base)
+    {
+        $adminDir = defined('_PS_ADMIN_DIR_') ? basename(_PS_ADMIN_DIR_) : '';
+        if ($adminDir === '') {
+            // Cron / shop request: find the back-office folder.
+            foreach (glob(_PS_ROOT_DIR_ . '/*/index.php') ?: [] as $file) {
+                if (is_file(dirname($file) . '/init.php') && is_dir(dirname($file) . '/themes')) {
+                    $adminDir = basename(dirname($file));
+                    break;
+                }
+            }
+        }
+
+        return $adminDir !== '' ? $base . $adminDir . '/index.php?controller=AdminProductScheduler' : '';
     }
 
     private static function log($message, $severity)

@@ -215,10 +215,10 @@
                                         <button type="button" class="btn btn-default btn-sm" data-pps-toggle="#pps-rs-{$row.id|intval}">{l s='Change time' mod='productscheduler'}</button>
                                         <button type="submit" form="pps-row-form" name="pps_row" value="run:{$row.id|intval}" class="btn btn-default btn-sm"
                                                 data-pps-confirm="{l s='Run this schedule now? The product changes immediately.' mod='productscheduler'}">{l s='Run now' mod='productscheduler'}</button>
-                                        <button type="submit" form="pps-row-form" name="pps_row" value="cancel:{$row.id|intval}" class="btn btn-default btn-sm pps-btn-danger"
+                                        <button type="submit" form="pps-row-form" name="pps_row" value="cancel:{$row.id|intval}" class="btn btn-default btn-sm pps-btn-danger" data-pps-confirm-danger="1"
                                                 data-pps-confirm="{l s='Cancel this schedule?' mod='productscheduler'}">{l s='Cancel' mod='productscheduler'}</button>
                                     {elseif $row.status != 'running'}
-                                        <button type="submit" form="pps-row-form" name="pps_row" value="delete:{$row.id|intval}" class="btn btn-default btn-sm"
+                                        <button type="submit" form="pps-row-form" name="pps_row" value="delete:{$row.id|intval}" class="btn btn-default btn-sm" data-pps-confirm-danger="1"
                                                 data-pps-confirm="{l s='Delete this entry from the history?' mod='productscheduler'}">{l s='Delete' mod='productscheduler'}</button>
                                     {/if}
                                 {/if}

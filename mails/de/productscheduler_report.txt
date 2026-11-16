@@ -1,8 +1,12 @@
 Bericht: Geplante Veröffentlichung - {shop_name}
 Lauf um {run_time}
 
-Erledigt: {done} / Fehlgeschlagen: {failed}
+Ausgeführt: {processed} | Erledigt: {done} | Fehlgeschlagen: {failed}
 
 {rows_txt}
+Zeitplanliste öffnen: {admin_url}
+
 --
-Geplante Produkt-Veröffentlichung - diese E-Mail können Sie in den Moduleinstellungen abschalten.
+{module_name} v{module_version}
+Entwickelt von {author_name} - {author_site} ({author_url})
+Sie erhalten diese E-Mail, weil der Bericht in den Moduleinstellungen eingeschaltet ist.

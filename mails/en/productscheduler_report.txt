@@ -1,8 +1,12 @@
 Scheduled publishing report - {shop_name}
 Run at {run_time}
 
-Done: {done} / Failed: {failed}
+Executed: {processed} | Done: {done} | Failed: {failed}
 
 {rows_txt}
+Open the schedule list: {admin_url}
+
 --
-Scheduled Product Publishing - you can turn this e-mail off in the module settings.
+{module_name} v{module_version}
+Developed by {author_name} - {author_site} ({author_url})
+You receive this e-mail because the report is turned on in the module settings.

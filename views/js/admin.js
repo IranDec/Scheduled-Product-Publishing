@@ -33,6 +33,74 @@
         }
     }
 
+    /** Translations of the nearest module screen (the popup is used on every screen). */
+    function texts(node) {
+        var root = node && node.closest ? node.closest('[data-pps-config]') : null;
+        root = root || q('[data-pps-config]');
+        return root ? (config(root).i18n || {}) : {};
+    }
+
+    /**
+     * Styled confirmation popup instead of window.confirm(). Resolves true (OK) or false
+     * (cancel, Esc, click outside). Keyboard: Enter = OK, Esc = cancel, focus stays inside.
+     */
+    function ask(message, opts) {
+        opts = opts || {};
+        var t = opts.texts || {};
+        return new Promise(function (resolve) {
+            var previous = document.activeElement;
+            var backdrop = el('div', 'pps pps-modal-backdrop');
+            var dialog = el('div', 'pps-modal' + (opts.danger ? ' is-danger' : ''));
+            dialog.setAttribute('role', 'alertdialog');
+            dialog.setAttribute('aria-modal', 'true');
+            var icon = el('div', 'pps-modal-icon', opts.danger ? '!' : '?');
+            icon.setAttribute('aria-hidden', 'true');
+            var title = el('div', 'pps-modal-title', t.confirmTitle || 'Please confirm');
+            title.id = 'pps-modal-title-' + Date.now();
+            var text = el('div', 'pps-modal-text', message);
+            text.id = title.id + '-text';
+            dialog.setAttribute('aria-labelledby', title.id);
+            dialog.setAttribute('aria-describedby', text.id);
+            var actions = el('div', 'pps-modal-actions');
+            var back = el('button', 'pps-modal-btn pps-modal-back', t.confirmBack || 'No, go back');
+            var ok = el('button', 'pps-modal-btn pps-modal-ok', t.confirmOk || 'Yes, continue');
+            back.type = 'button';
+            ok.type = 'button';
+            actions.appendChild(back);
+            actions.appendChild(ok);
+            dialog.appendChild(icon);
+            dialog.appendChild(title);
+            dialog.appendChild(text);
+            dialog.appendChild(actions);
+            backdrop.appendChild(dialog);
+            document.body.appendChild(backdrop);
+            window.requestAnimationFrame(function () { backdrop.classList.add('is-open'); });
+            ok.focus();
+
+            function close(result) {
+                document.removeEventListener('keydown', onKey, true);
+                backdrop.classList.remove('is-open');
+                window.setTimeout(function () {
+                    if (backdrop.parentNode) { backdrop.parentNode.removeChild(backdrop); }
+                    if (previous && previous.focus) { previous.focus(); }
+                }, 180);
+                resolve(result);
+            }
+            function onKey(e) {
+                if (e.key === 'Escape') { e.preventDefault(); close(false); }
+                else if (e.key === 'Enter') { e.preventDefault(); close(document.activeElement !== back); }
+                else if (e.key === 'Tab') {
+                    e.preventDefault();
+                    (document.activeElement === ok ? back : ok).focus();
+                }
+            }
+            document.addEventListener('keydown', onKey, true);
+            ok.addEventListener('click', function () { close(true); });
+            back.addEventListener('click', function () { close(false); });
+            backdrop.addEventListener('mousedown', function (e) { if (e.target === backdrop) { close(false); } });
+        });
+    }
+
     // The shop's wall clock (its time zone), independent of the browser's time zone.
     function serverNow(cfg) {
         var m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(cfg.serverNow || '');
@@ -266,7 +334,12 @@
         }
 
         function act(op, id, question) {
-            if (question && !window.confirm(question)) { return; }
+            ask(question, { texts: t, danger: op !== 'run' }).then(function (yes) {
+                if (yes) { send(op, id); }
+            });
+        }
+
+        function send(op, id) {
             post(cfg, op, { id_product: cfg.idProduct, id: id }).then(function (res) {
                 if (res.success) {
                     render(res.data);
@@ -434,13 +507,88 @@
         });
     }
 
+    // ------------------------------------------------------------------ settings page: cron builder
+
+    function initSettings(root, cfg) {
+        var t = cfg.i18n || {};
+        var form = q('[data-pps-cron]', root);
+        if (!form) { return; }
+        var commands = {};
+        try { commands = JSON.parse(form.getAttribute('data-pps-cron-commands') || '{}'); } catch (e) { commands = {}; }
+        var mode = q('[data-pps-cron-mode]', form);
+        var method = q('[data-pps-cron-method]', form);
+        var minute = q('[data-pps-cron-minute]', form);
+        var time = q('[data-pps-cron-time]', form);
+        var custom = q('[data-pps-cron-custom]', form);
+        var line = q('[data-pps-cron-line]', form);
+        var exprBox = q('[data-pps-cron-expr]', form);
+        var note = q('[data-pps-cron-note]', form);
+        var field = '(\\*|\\d{1,2}(-\\d{1,2})?)(\\/\\d{1,2})?';
+        var list = field + '(,' + field + ')*';
+        var valid = new RegExp('^' + list + '( ' + list + '){4}$');
+
+        function expression() {
+            var m = mode.value;
+            if (m === '1') { return '* * * * *'; }
+            if (m === '60') { return Math.max(0, Math.min(59, parseInt(minute.value, 10) || 0)) + ' * * * *'; }
+            if (m === 'daily') {
+                var parts = (time.value || '06:00').split(':');
+                return (parseInt(parts[1], 10) || 0) + ' ' + (parseInt(parts[0], 10) || 0) + ' * * *';
+            }
+            if (m === 'custom') { return custom.value.trim().replace(/\s+/g, ' '); }
+            return '*/' + m + ' * * * *';
+        }
+
+        function delayText() {
+            var m = mode.value;
+            if (m === '1') { return t.cronDelay1; }
+            if (m === '60') { return t.cronDelayHour; }
+            if (m === 'daily') { return t.cronDelayDaily; }
+            if (m === 'custom') { return t.cronDelayCustom; }
+            return (t.cronDelayMin || '%d').replace('%d', m);
+        }
+
+        function sync() {
+            qa('[data-pps-cron-for]', form).forEach(function (box) {
+                box.hidden = box.getAttribute('data-pps-cron-for') !== mode.value;
+            });
+            var expr = expression();
+            var ok = mode.value !== 'custom' || valid.test(expr);
+            custom.classList.toggle('pps-invalid', !ok);
+            exprBox.textContent = ok ? expr : '';
+            note.textContent = ok ? delayText() : t.cronInvalid;
+            note.className = 'pps-cron-note' + (ok ? (mode.value === '1' ? ' is-best' : '') : ' is-error');
+            line.value = ok ? expr + ' ' + (commands[method.value] || '') : '';
+        }
+
+        [mode, method, minute, time, custom].forEach(function (input) {
+            input.addEventListener('input', sync);
+            input.addEventListener('change', sync);
+        });
+        sync();
+    }
+
     // ------------------------------------------------------------------ everywhere
 
     document.addEventListener('click', function (e) {
         var confirmBtn = e.target.closest ? e.target.closest('[data-pps-confirm]') : null;
-        if (confirmBtn && !window.confirm(confirmBtn.getAttribute('data-pps-confirm'))) {
-            e.preventDefault();
-            return;
+        if (confirmBtn) {
+            if (confirmBtn.getAttribute('data-pps-confirmed')) {
+                confirmBtn.removeAttribute('data-pps-confirmed');
+            } else {
+                e.preventDefault();
+                ask(confirmBtn.getAttribute('data-pps-confirm'), {
+                    texts: texts(confirmBtn),
+                    danger: !!confirmBtn.getAttribute('data-pps-confirm-danger')
+                }).then(function (yes) {
+                    if (yes) {
+                        // Repeat the click: keeps the button's name/value (and form="...") in the submission.
+                        confirmBtn.setAttribute('data-pps-confirmed', '1');
+                        confirmBtn.click();
+                    }
+                });
+                return;
+            }
         }
 
         var toggle = e.target.closest ? e.target.closest('[data-pps-toggle]') : null;
@@ -485,6 +633,8 @@
                 initProductTab(root, cfg);
             } else if (cfg.mode === 'list') {
                 initList(root, cfg);
+            } else if (cfg.mode === 'settings') {
+                initSettings(root, cfg);
             }
         });
     }

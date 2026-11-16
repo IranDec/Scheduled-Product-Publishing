@@ -9,7 +9,7 @@
  * @author    Mohammad Babaei <https://adschi.com>
  * @copyright 2026 Mohammad Babaei - https://adschi.com
  * @license   MIT
- * @version   1.0.0
+ * @version   1.1.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -24,7 +24,7 @@ require_once __DIR__ . '/classes/ProductSchedulerRunner.php';
 class ProductScheduler extends Module
 {
     // @author Mohammad Babaei | https://adschi.com
-    const MODULE_VERSION = '1.0.0';
+    const MODULE_VERSION = '1.1.0';
     const AUTHOR_NAME = 'Mohammad Babaei';
     const AUTHOR_URL = 'https://adschi.com';
     const AUTHOR_SITE = 'Adschi.com';
@@ -37,7 +37,16 @@ class ProductScheduler extends Module
         'PRODUCTSCHEDULER_NOTIFY_EMAIL' => '',
         'PRODUCTSCHEDULER_HISTORY_DAYS' => 180,
         'PRODUCTSCHEDULER_BATCH' => 100,
+        // How the shop's cron job is set up (chosen on the settings page; used for the crontab line and the status check)
+        'PRODUCTSCHEDULER_CRON_MODE' => '1',
+        'PRODUCTSCHEDULER_CRON_MINUTE' => 0,
+        'PRODUCTSCHEDULER_CRON_TIME' => '06:00',
+        'PRODUCTSCHEDULER_CRON_CUSTOM' => '',
+        'PRODUCTSCHEDULER_CRON_METHOD' => 'curl',
     ];
+
+    /** Cron frequencies offered on the settings page: mode => interval in seconds. */
+    private static $cronModes = ['1' => 60, '5' => 300, '10' => 600, '15' => 900, '30' => 1800, '60' => 3600, 'daily' => 86400, 'custom' => 0];
 
     /** Runtime state written by the runner. */
     private static $stateKeys = [
@@ -119,7 +128,8 @@ class ProductScheduler extends Module
         return true;
     }
 
-    private function installConfiguration()
+    /** Adds missing settings (also used by upgrades). */
+    public function installConfiguration()
     {
         foreach (self::$settings as $key => $default) {
             if (Configuration::getGlobalValue($key) === false) {
@@ -374,9 +384,37 @@ class ProductScheduler extends Module
             'status' => $row['status'],
             'status_label' => $this->statusLabel($row['status']),
             'executed' => $row['executed_at'] ? $this->formatDate($row['executed_at']) : '',
-            'message' => (string) $row['message'],
+            'message' => $this->messageText($row['message']),
             'employee' => $employee !== '' ? $employee : ((int) $row['id_employee'] ? '#' . (int) $row['id_employee'] : ''),
         ];
+    }
+
+    /**
+     * Result messages are stored in English (log language); this shows them in the employee's /
+     * report's language. Unknown text (e.g. PHP errors) stays as it is.
+     */
+    public function messageText($message)
+    {
+        $message = (string) $message;
+        $sentences = [
+            'Already online - nothing to change.' => $this->l('Already online - nothing to change.'),
+            'Already offline - nothing to change.' => $this->l('Already offline - nothing to change.'),
+            'Product not found (deleted?).' => $this->l('Product not found (deleted?).'),
+            'The product is no longer assigned to this shop.' => $this->l('The product is no longer assigned to this shop.'),
+            'Interrupted several times - not retried.' => $this->l('Interrupted several times - not retried.'),
+            'Unknown action.' => $this->l('Unknown action.'),
+        ];
+        if (isset($sentences[$message])) {
+            return $sentences[$message];
+        }
+        if (preg_match('/^(Published|Unpublished)( \(shops: [0-9, ]+\))?(, shown as new)?\.( .*)?$/', $message, $m)) {
+            return ($m[1] === 'Published' ? $this->l('Published') : $this->l('Unpublished'))
+                . (!empty($m[2]) ? str_replace('shops', $this->l('shops'), $m[2]) : '')
+                . (!empty($m[3]) ? ', ' . $this->l('shown as new') : '') . '.'
+                . (isset($m[4]) ? $m[4] : '');
+        }
+
+        return $message;
     }
 
     public function statusLabel($status)
@@ -417,12 +455,14 @@ class ProductScheduler extends Module
         $lastRun = (string) Configuration::getGlobalValue('PRODUCTSCHEDULER_LAST_RUN');
         $lastCron = (string) Configuration::getGlobalValue('PRODUCTSCHEDULER_LAST_CRON');
         $nextDue = (string) Configuration::getGlobalValue('PRODUCTSCHEDULER_NEXT_DUE');
-        $cronOk = $lastCron !== '' && strtotime($lastCron) >= time() - 15 * 60;
+        // "Active" = the cron called within its own interval plus a margin (every minute: 10 min, daily: 36 h).
+        $interval = $this->cronIntervalSeconds();
+        $cronOk = $lastCron !== '' && strtotime($lastCron) >= time() - $interval - max(540, (int) ($interval / 2));
         $visit = (bool) (int) Configuration::getGlobalValue('PRODUCTSCHEDULER_VISIT_RUN');
 
         if ($cronOk) {
             $level = 'success';
-            $text = sprintf($this->l('Cron job active - last check %s.'), $this->formatDate($lastCron));
+            $text = sprintf($this->l('Cron job active (%1$s) - last check %2$s.'), $this->cronModeLabel(), $this->formatDate($lastCron));
         } elseif ($visit) {
             $level = 'warning';
             $text = $this->l('No cron job detected: schedules run when someone visits the shop or the back office, which can be a few minutes late. Set up the cron job in the module settings for exact times.');
@@ -477,6 +517,15 @@ class ProductScheduler extends Module
             'noResults' => $this->l('No product found.'),
             'remove' => $this->l('Remove'),
             'copied' => $this->l('Copied'),
+            'confirmTitle' => $this->l('Please confirm'),
+            'confirmOk' => $this->l('Yes, continue'),
+            'confirmBack' => $this->l('No, go back'),
+            'cronDelay1' => $this->l('Products change within a minute of their scheduled time.'),
+            'cronDelayMin' => $this->l('Products change up to %d minutes after their scheduled time.'),
+            'cronDelayHour' => $this->l('Products change up to an hour after their scheduled time.'),
+            'cronDelayDaily' => $this->l('Products change only once a day, at the chosen time - schedules in between wait until then.'),
+            'cronDelayCustom' => $this->l('Products change at the first run of your expression after their scheduled time.'),
+            'cronInvalid' => $this->l('Enter 5 fields: minute hour day month weekday, e.g. */20 6-22 * * *'),
         ];
     }
 
@@ -490,6 +539,10 @@ class ProductScheduler extends Module
 
         if (Tools::isSubmit('submitProductSchedulerSettings')) {
             $output .= $this->processSettings();
+        } elseif (Tools::isSubmit('submitProductSchedulerCron')) {
+            $output .= $this->processCronSettings();
+        } elseif (Tools::isSubmit('submitProductSchedulerTestMail')) {
+            $output .= $this->processTestMail();
         } elseif (Tools::isSubmit('submitProductSchedulerToken')) {
             if (!$this->isValidFormKey()) {
                 $output .= $this->displayError($this->l('Your session expired. Reload the page and try again.'));
@@ -577,6 +630,179 @@ class ProductScheduler extends Module
         return $this->displayConfirmation($this->l('Settings saved.'));
     }
 
+    // -----------------------------------------------------------------------
+    // Cron schedule (chosen by the shop)
+    // -----------------------------------------------------------------------
+
+    /** Five plain cron fields: numbers, ranges, steps and lists (no names, no @macros). */
+    public static function isValidCronExpression($expression)
+    {
+        $field = '(\\*|\\d{1,2}(-\\d{1,2})?)(\\/\\d{1,2})?';
+        $list = $field . '(,' . $field . ')*';
+
+        return (bool) preg_match('/^' . $list . '( ' . $list . '){4}$/', trim((string) $expression));
+    }
+
+    public function cronMode()
+    {
+        $mode = (string) Configuration::getGlobalValue('PRODUCTSCHEDULER_CRON_MODE');
+
+        return isset(self::$cronModes[$mode]) ? $mode : '1';
+    }
+
+    /** The crontab time fields for the chosen frequency. */
+    public function cronExpression()
+    {
+        $mode = $this->cronMode();
+        $minute = max(0, min(59, (int) Configuration::getGlobalValue('PRODUCTSCHEDULER_CRON_MINUTE')));
+        switch ($mode) {
+            case '1':
+                return '* * * * *';
+            case '60':
+                return $minute . ' * * * *';
+            case 'daily':
+                $time = explode(':', (string) Configuration::getGlobalValue('PRODUCTSCHEDULER_CRON_TIME'));
+
+                return max(0, min(59, isset($time[1]) ? (int) $time[1] : 0)) . ' ' . max(0, min(23, (int) $time[0])) . ' * * *';
+            case 'custom':
+                $custom = (string) Configuration::getGlobalValue('PRODUCTSCHEDULER_CRON_CUSTOM');
+
+                return self::isValidCronExpression($custom) ? trim($custom) : '* * * * *';
+        }
+
+        return '*/' . $mode . ' * * * *';
+    }
+
+    /** Expected seconds between two cron calls (custom: estimated from the minute / hour fields). */
+    public function cronIntervalSeconds()
+    {
+        $mode = $this->cronMode();
+        if ($mode !== 'custom') {
+            return self::$cronModes[$mode];
+        }
+        $fields = explode(' ', $this->cronExpression());
+        if ($fields[0] === '*') {
+            return 60;
+        }
+        if (preg_match('/^\*\/(\d+)$/', $fields[0], $m)) {
+            return 60 * max(1, (int) $m[1]);
+        }
+
+        return $fields[1] === '*' ? 3600 : 86400;
+    }
+
+    public function cronModeLabel()
+    {
+        $labels = $this->cronModeLabels();
+
+        return $this->cronMode() === 'custom' ? $this->cronExpression() : $labels[$this->cronMode()];
+    }
+
+    public function cronModeLabels()
+    {
+        return [
+            '1' => $this->l('every minute'),
+            '5' => $this->l('every 5 minutes'),
+            '10' => $this->l('every 10 minutes'),
+            '15' => $this->l('every 15 minutes'),
+            '30' => $this->l('every 30 minutes'),
+            '60' => $this->l('every hour'),
+            'daily' => $this->l('once a day'),
+            'custom' => $this->l('custom'),
+        ];
+    }
+
+    /** PHP command line binary of the version that runs the shop, when it can be found. */
+    private function phpCliBinary()
+    {
+        foreach (['/usr/bin/php' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION, PHP_BINDIR . '/php'] as $candidate) {
+            if (@is_file($candidate) && @is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return 'php';
+    }
+
+    /** The command part of the crontab line for each way of calling the runner. */
+    public function cronCommands()
+    {
+        $url = $this->getCronUrl();
+
+        return [
+            'curl' => 'curl -fsS "' . $url . '" >/dev/null 2>&1',
+            'wget' => 'wget -q -O /dev/null "' . $url . '"',
+            'cli' => $this->phpCliBinary() . ' ' . $this->getLocalPath() . 'cron_cli.php >/dev/null 2>&1',
+        ];
+    }
+
+    private function processCronSettings()
+    {
+        if (!$this->isValidFormKey()) {
+            return $this->displayError($this->l('Your session expired. Reload the page and try again.'));
+        }
+        $mode = (string) Tools::getValue('PRODUCTSCHEDULER_CRON_MODE');
+        $method = (string) Tools::getValue('PRODUCTSCHEDULER_CRON_METHOD');
+        $minute = (int) Tools::getValue('PRODUCTSCHEDULER_CRON_MINUTE');
+        $time = (string) Tools::getValue('PRODUCTSCHEDULER_CRON_TIME');
+        $custom = trim(preg_replace('/\s+/', ' ', (string) Tools::getValue('PRODUCTSCHEDULER_CRON_CUSTOM')));
+
+        $errors = [];
+        if (!isset(self::$cronModes[$mode])) {
+            $errors[] = $this->l('Choose how often the cron job runs.');
+        }
+        if (!in_array($method, ['curl', 'wget', 'cli'], true)) {
+            $errors[] = $this->l('Choose how the cron job calls the module.');
+        }
+        if ($mode === '60' && ($minute < 0 || $minute > 59)) {
+            $errors[] = $this->l('Minute: enter 0 to 59.');
+        }
+        if ($mode === 'daily' && !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time)) {
+            $errors[] = $this->l('Enter a valid time, e.g. 06:00.');
+        }
+        if ($mode === 'custom' && !self::isValidCronExpression($custom)) {
+            $errors[] = $this->l('Enter 5 fields: minute hour day month weekday, e.g. */20 6-22 * * *');
+        }
+        if ($errors) {
+            return $this->displayError(implode('<br>', array_map('htmlspecialchars', $errors)));
+        }
+
+        Configuration::updateGlobalValue('PRODUCTSCHEDULER_CRON_MODE', $mode);
+        Configuration::updateGlobalValue('PRODUCTSCHEDULER_CRON_METHOD', $method);
+        if ($mode === '60') {
+            Configuration::updateGlobalValue('PRODUCTSCHEDULER_CRON_MINUTE', $minute);
+        } elseif ($mode === 'daily') {
+            Configuration::updateGlobalValue('PRODUCTSCHEDULER_CRON_TIME', $time);
+        } elseif ($mode === 'custom') {
+            Configuration::updateGlobalValue('PRODUCTSCHEDULER_CRON_CUSTOM', $custom);
+        }
+
+        return $this->displayConfirmation($this->l('Cron schedule saved. Put the line shown below into your crontab (or hosting panel) - the module cannot change the crontab of the server itself.'));
+    }
+
+    private function processTestMail()
+    {
+        if (!$this->isValidFormKey()) {
+            return $this->displayError($this->l('Your session expired. Reload the page and try again.'));
+        }
+        $to = ProductSchedulerRunner::reportRecipient();
+        $now = date('Y-m-d H:i:s');
+        $sample = [
+            'ok' => true, 'source' => 'test', 'time' => $now, 'busy' => false, 'processed' => 2, 'done' => 1, 'failed' => 1,
+            'items' => [
+                ['id' => 0, 'id_product' => 0, 'id_shop' => 0, 'action' => ProductSchedulerRepository::ACTION_PUBLISH, 'scheduled_at' => $now,
+                 'ok' => true, 'message' => $this->l('Example: Published, shown as new.'), 'name' => $this->l('Example product A')],
+                ['id' => 0, 'id_product' => 0, 'id_shop' => 0, 'action' => ProductSchedulerRepository::ACTION_UNPUBLISH, 'scheduled_at' => $now,
+                 'ok' => false, 'message' => $this->l('Example: Product not found (deleted?).'), 'name' => $this->l('Example product B')],
+            ],
+        ];
+        if ($to === '' || !ProductSchedulerRunner::sendReport($sample)) {
+            return $this->displayError($this->l('The test e-mail could not be sent. Check the e-mail settings of the shop (Advanced Parameters > E-mail) and the report address.'));
+        }
+
+        return $this->displayConfirmation(sprintf($this->l('Test e-mail sent to %s.'), $to));
+    }
+
     private function settingsUrl()
     {
         return $this->context->link->getAdminLink('AdminModules', false)
@@ -593,8 +819,15 @@ class ProductScheduler extends Module
             'pps_runner' => $this->runnerStatus(),
             'pps_counts' => $counts,
             'pps_cron_url' => $cronUrl,
-            'pps_cron_line' => '* * * * * curl -fsS "' . $cronUrl . '" >/dev/null 2>&1',
-            'pps_cli_line' => '* * * * * php ' . $this->getLocalPath() . 'cron_cli.php >/dev/null 2>&1',
+            'pps_cron_mode' => $this->cronMode(),
+            'pps_cron_mode_labels' => $this->cronModeLabels(),
+            'pps_cron_minute' => (int) Configuration::getGlobalValue('PRODUCTSCHEDULER_CRON_MINUTE'),
+            'pps_cron_time' => (string) Configuration::getGlobalValue('PRODUCTSCHEDULER_CRON_TIME'),
+            'pps_cron_custom' => (string) Configuration::getGlobalValue('PRODUCTSCHEDULER_CRON_CUSTOM'),
+            'pps_cron_method' => (string) Configuration::getGlobalValue('PRODUCTSCHEDULER_CRON_METHOD') ?: 'curl',
+            'pps_cron_commands_json' => json_encode($this->cronCommands()),
+            'pps_cron_line' => $this->cronExpression() . ' ' . $this->cronCommands()[(string) Configuration::getGlobalValue('PRODUCTSCHEDULER_CRON_METHOD') ?: 'curl'],
+            'pps_report_to' => ProductSchedulerRunner::reportRecipient(),
             'pps_manage_url' => $this->context->link->getAdminLink(self::ADMIN_TAB),
             'pps_settings_url' => $this->settingsUrl(),
             'pps_form_key' => $this->formKey(),
