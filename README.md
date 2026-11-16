@@ -1,5 +1,7 @@
 # Scheduled Product Publishing
 
+![Scheduled Product Publishing - PrestaShop module by Adschi.com](docs/banner.png)
+
 **PrestaShop module - publish or unpublish products automatically at the date and time you choose.**
 
 Plan a product launch for Monday 08:00, take a seasonal product offline on Sunday night, or put

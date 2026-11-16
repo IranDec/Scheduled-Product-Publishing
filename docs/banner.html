@@ -1,0 +1,171 @@
+<!doctype html>
+<!--
+  Banner source (1280 x 640). Render to docs/banner.png with a headless browser, e.g.
+  msedge --headless=new --hide-scrollbars --window-size=1280,640 --screenshot=banner.png banner.html
+  The version is read from ?v=... (falls back to the text below).
+  @author Mohammad Babaei | https://adschi.com
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scheduled Product Publishing - banner</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    font-family: "Segoe UI", "Inter", Arial, sans-serif;
+    color: #fff;
+    background:
+      radial-gradient(900px 520px at 88% 18%, rgba(37, 185, 215, .28), transparent 60%),
+      radial-gradient(700px 520px at 8% 110%, rgba(108, 92, 231, .45), transparent 60%),
+      linear-gradient(135deg, #0a0a3f 0%, #141055 55%, #0c1a4a 100%);
+    position: relative;
+  }
+  /* subtle grid */
+  body::before {
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: linear-gradient(90deg, rgba(0,0,0,.9), rgba(0,0,0,.15));
+  }
+  .top-bar { position: absolute; left: 0; right: 0; top: 0; height: 6px; background: linear-gradient(90deg, #25b9d7, #6c5ce7 55%, #25b9d7); }
+
+  .left { position: absolute; left: 72px; top: 64px; width: 600px; }
+  .logo { height: 66px; display: block; margin-bottom: 40px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 15px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: #7fe3f5;
+  }
+  .eyebrow::before { content: ""; width: 26px; height: 2px; background: #25b9d7; }
+  h1 { font-size: 58px; line-height: 1.04; font-weight: 800; margin: 14px 0 18px; letter-spacing: -.01em; }
+  h1 span { background: linear-gradient(90deg, #7fe3f5, #b9aefc); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tagline { font-size: 21px; line-height: 1.45; color: #c9cdf2; max-width: 540px; }
+
+  .chips { display: flex; flex-wrap: nowrap; gap: 8px; margin-top: 32px; width: 680px; }
+  .chip {
+    font-size: 14px; font-weight: 600; color: #e6e8ff; white-space: nowrap;
+    padding: 7px 13px; border-radius: 999px;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16);
+  }
+
+  .meta { position: absolute; left: 72px; bottom: 54px; display: flex; align-items: center; gap: 14px; }
+  .version {
+    font-size: 20px; font-weight: 800; color: #0a0a3f;
+    padding: 9px 20px; border-radius: 999px;
+    background: linear-gradient(90deg, #7fe3f5, #25b9d7);
+    box-shadow: 0 8px 24px rgba(37,185,215,.35);
+  }
+  .compat { font-size: 16px; color: #aab0e6; font-weight: 600; }
+  .site { font-size: 16px; color: #fff; font-weight: 700; opacity: .9; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: #5a5fa8; }
+
+  /* ---- right side: product card mock-up */
+  .card {
+    position: absolute; right: 70px; top: 96px; width: 430px;
+    background: #ffffff; color: #2f3a40; border-radius: 18px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+    overflow: hidden;
+  }
+  .card-top { height: 5px; background: linear-gradient(90deg, #25b9d7, #6c5ce7 55%, #25b9d7); }
+  .card-body { padding: 22px 24px 20px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .card-title { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+  .icon { width: 34px; height: 34px; border-radius: 50%; background: #e6f7fb; display: flex; align-items: center; justify-content: center; }
+  .pill { font-size: 12px; font-weight: 700; padding: 3px 11px; border-radius: 999px; }
+  .pill::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; }
+  .off { background: #eceff1; color: #546e7a; }
+  .item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 10px; }
+  .item + .item { border-top: 1px solid #f1f4f5; }
+  .item.hl { background: #f5f8f9; }
+  .badge { font-size: 12px; font-weight: 700; padding: 3px 11px; border-radius: 999px; }
+  .pub { background: #e8f5e9; color: #2e7d32; }
+  .unpub { background: #eceff1; color: #455a64; }
+  .when { font-weight: 700; font-size: 15px; }
+  .sub { font-size: 12px; color: #6c868e; margin-top: 2px; }
+  .grow { flex: 1; }
+  .btn { font-size: 12px; font-weight: 600; padding: 6px 11px; border: 1px solid #d8e0e3; border-radius: 6px; color: #2f3a40; }
+  .runner { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: #e8f5e9; border-left: 4px solid #2e7d32; font-size: 13px; color: #2e7d32; font-weight: 600; }
+
+  .float {
+    position: absolute; right: 330px; top: 338px;
+    background: #fff; color: #2f3a40; border-radius: 14px; padding: 14px 18px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.4);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .float .big { font-size: 26px; font-weight: 800; color: #2e7d32; }
+  .float .lbl { font-size: 13px; color: #6c868e; font-weight: 600; line-height: 1.3; }
+  .cron {
+    position: absolute; right: 70px; bottom: 58px;
+    font-family: Consolas, "SFMono-Regular", monospace; font-size: 15px;
+    background: rgba(5, 8, 35, .7); border: 1px solid rgba(127,227,245,.25);
+    color: #7fe3f5; padding: 10px 16px; border-radius: 10px;
+  }
+  .cron b { color: #b9aefc; font-weight: 400; }
+</style>
+</head>
+<body>
+<div class="top-bar"></div>
+
+<div class="left">
+  <img class="logo" src="logo-white.png" alt="Adschi">
+  <div class="eyebrow">PrestaShop module</div>
+  <h1>Scheduled Product<br><span>Publishing</span></h1>
+  <p class="tagline">Put products online and take them offline automatically &mdash; exactly on the date and time you choose.</p>
+  <div class="chips">
+    <span class="chip">Per product</span>
+    <span class="chip">Bulk scheduling</span>
+    <span class="chip">Multistore</span>
+    <span class="chip">Cron builder</span>
+    <span class="chip">E-mail reports</span>
+  </div>
+</div>
+
+<div class="meta">
+  <span class="version" id="version">v1.1.0</span>
+  <span class="compat">PrestaShop 1.7 &ndash; 9</span>
+  <span class="dot"></span>
+  <span class="site">adschi.com</span>
+</div>
+
+<div class="card">
+  <div class="card-top"></div>
+  <div class="card-body">
+    <div class="card-head">
+      <div class="card-title">
+        <span class="icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a93ab" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg>
+        </span>
+        Scheduled publishing
+      </div>
+      <span class="pill off">Offline</span>
+    </div>
+    <div class="item hl">
+      <span class="badge pub">Publish</span>
+      <div class="grow"><div class="when">Mon, 08:00</div><div class="sub">in 2 d 14 h &middot; shown as new</div></div>
+      <span class="btn">Run now</span>
+    </div>
+    <div class="item">
+      <span class="badge unpub">Unpublish</span>
+      <div class="grow"><div class="when">Sun, 23:59</div><div class="sub">in 8 d 6 h &middot; all shops</div></div>
+      <span class="btn">Cancel</span>
+    </div>
+    <div class="runner">&#10003; Cron job active (every minute)</div>
+  </div>
+</div>
+
+<div class="float">
+  <span class="big">&#10003; 24</span>
+  <span class="lbl">products went online<br>at 08:00 sharp</span>
+</div>
+
+<div class="cron"><b>* * * * *</b> php cron_cli.php</div>
+
+<script>
+  var v = new URLSearchParams(location.search).get('v');
+  if (v && /^[0-9]+(\.[0-9]+){1,3}$/.test(v)) { document.getElementById('version').textContent = 'v' + v; }
+</script>
+</body>
+</html>

@@ -24,6 +24,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
   version (filled in automatically) and a link to adschi.com.
 - **"Send a test report e-mail"** button on the settings page (example data, marked [TEST]).
 - The command-line crontab line uses the PHP binary of the shop's PHP version when it can be found.
+- Banner (`docs/banner.png`, 1280 x 640, and `@2x`; source `docs/banner.html`, version via `?v=`) shown at the top of the README.
 - Result messages ("Published", "Already online", "Product not found", ...) are shown in the
   back-office language and the report language instead of always English (stored text unchanged).
 
