@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<module>
+    <name>productscheduler</name>
+    <displayName><![CDATA[Scheduled Product Publishing]]></displayName>
+    <version><![CDATA[1.0.0]]></version>
+    <description><![CDATA[Publish or unpublish products automatically at the date and time you choose - per product, in bulk and per shop. By Mohammad Babaei - https://adschi.com]]></description>
+    <author><![CDATA[Mohammad Babaei]]></author>
+    <tab><![CDATA[administration]]></tab>
+    <is_configurable>1</is_configurable>
+    <need_instance>0</need_instance>
+    <limited_countries></limited_countries>
+</module>

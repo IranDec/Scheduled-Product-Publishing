@@ -1,0 +1,8 @@
+Bericht: Geplante Veröffentlichung - {shop_name}
+Lauf um {run_time}
+
+Erledigt: {done} / Fehlgeschlagen: {failed}
+
+{rows_txt}
+--
+Geplante Produkt-Veröffentlichung - diese E-Mail können Sie in den Moduleinstellungen abschalten.

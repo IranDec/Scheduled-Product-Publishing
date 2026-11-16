@@ -1,0 +1,8 @@
+Scheduled publishing report - {shop_name}
+Run at {run_time}
+
+Done: {done} / Failed: {failed}
+
+{rows_txt}
+--
+Scheduled Product Publishing - you can turn this e-mail off in the module settings.
