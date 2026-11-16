@@ -62,10 +62,9 @@ a whole collection online at once - per product, in bulk, and per shop.
 
 ## Installation
 
-1. Get a ZIP whose top folder is `productscheduler/` - use the ZIP from the
-   [Releases](https://github.com/IranDec/Scheduled-Product-Publishing/releases) page, or, when you
-   use GitHub's *Code > Download ZIP*, rename the extracted folder `Scheduled-Product-Publishing-main`
-   to `productscheduler` and zip it again (PrestaShop needs the folder name to match the module name).
+1. Get a ZIP whose top folder is `productscheduler/`. With GitHub's *Code > Download ZIP*, rename
+   the extracted folder `Scheduled-Product-Publishing-main` to `productscheduler` and zip it again
+   (PrestaShop needs the folder name to match the module name).
 2. Back office > *Modules > Module Manager* > *Upload a module* > choose the ZIP.
    (Or copy the `productscheduler` folder into `/modules/` and click *Install*.)
 3. Click *Configure* and set up the cron job (next section).
