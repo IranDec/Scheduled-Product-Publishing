@@ -6,6 +6,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ---
 
+## [1.2.0] - 2026-11-19
+
+### Added
+- **Blog articles** of the ST Blog module (`stblog`, Panda / Transformer themes) can be scheduled too.
+  New panel *Plan blog articles* on the list page: every article with its state (online / offline), date and
+  next planned change; tick articles and plan them
+  - **as a series**: one article every day / every 2 or 3 days / every week at a fixed time, from a start date,
+    in the order of the *Order* column (a new series continues the day after the last planned article), or
+  - **all at the same time**.
+  Offline articles that are not planned yet are ticked already; *show as the newest article* sets the article date
+  to the publish day, so the blog lists it first.
+- Publishing sets the article online in `st_blog` and `st_blog_shop` (the blog reads both), fires
+  `actionObjectStBlogClassUpdateAfter` for the blog blocks and clears the template and full-page caches once per run.
+- The schedule list shows blog rows with a *Blog* badge, finds them by article title and has a type filter
+  (*Products and blog / Products / Blog articles*); run now, change time, cancel and the e-mail report work for
+  articles too.
+
+### Changed
+- Column `type` (`product` / `blog`) in the schedule table; the upgrade adds it and keeps every existing schedule
+  as a product schedule. Product queries only read product rows.
+
+---
+
 ## [1.1.0] - 2026-11-16
 
 ### Added

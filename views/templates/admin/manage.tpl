@@ -115,6 +115,98 @@
     </div>
     {/if}
 
+    {if $pps_blog.available && $pps_can_edit}
+    <div class="panel pps-panel pps-blog-panel" id="pps-blog">
+        <div class="panel-heading">
+            <i class="icon-book"></i> {l s='Plan blog articles' mod='productscheduler'}
+            {if $pps_blog.unplanned}<span class="badge pps-badge-warn">{$pps_blog.unplanned|intval} {l s='offline and not planned' mod='productscheduler'}</span>{/if}
+        </div>
+        <p class="pps-sub pps-blog-intro">{l s='Publish written articles automatically - one at a time or as a series, e.g. one article every day at 10:00. Articles that are offline and not planned yet are ticked already.' mod='productscheduler'}</p>
+        {if $pps_blog.articles}
+        <form method="post" action="{$pps_form_url|escape:'html':'UTF-8'}" class="pps-form" autocomplete="off" data-pps-blog-form>
+            <input type="hidden" name="pps_token" value="{$pps_token|escape:'html':'UTF-8'}">
+            <div class="table-responsive">
+                <table class="table pps-table pps-blog-table">
+                    <thead>
+                        <tr>
+                            <th class="pps-col-check"><input type="checkbox" data-pps-blog-all aria-label="{l s='Select all' mod='productscheduler'}"></th>
+                            <th class="pps-col-order">{l s='Order' mod='productscheduler'}</th>
+                            <th>{l s='Article' mod='productscheduler'}</th>
+                            <th>{l s='Status' mod='productscheduler'}</th>
+                            <th>{l s='Article date' mod='productscheduler'}</th>
+                            <th>{l s='Next change' mod='productscheduler'}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {foreach from=$pps_blog.articles item=a name=blog}
+                        <tr>
+                            <td class="pps-col-check"><input type="checkbox" name="pps_blog_ids[]" value="{$a.id|intval}" data-pps-blog-check{if !$a.active && !$a.next} checked{/if}></td>
+                            <td class="pps-col-order"><input type="number" min="0" max="999" name="pps_blog_order[{$a.id|intval}]" value="{$smarty.foreach.blog.iteration|intval}" class="form-control input-sm" data-pps-blog-order></td>
+                            <td>
+                                {if $a.edit_url}<a class="pps-product" href="{$a.edit_url|escape:'html':'UTF-8'}">{$a.name|escape:'html':'UTF-8'}</a>{else}{$a.name|escape:'html':'UTF-8'}{/if}
+                                <div class="pps-sub">ID {$a.id|intval}{if $a.category} &middot; {$a.category|escape:'html':'UTF-8'}{/if}</div>
+                            </td>
+                            <td><span class="pps-status {if $a.active}pps-status-done{else}pps-status-cancelled{/if}">{if $a.active}{l s='Online' mod='productscheduler'}{else}{l s='Offline' mod='productscheduler'}{/if}</span></td>
+                            <td>{$a.date|escape:'html':'UTF-8'}</td>
+                            <td>
+                                {if $a.next}
+                                    <span class="pps-badge pps-badge-{$a.next.action|escape:'html':'UTF-8'}">{if $a.next.action == 'publish'}{l s='Publish' mod='productscheduler'}{else}{l s='Unpublish' mod='productscheduler'}{/if}</span>
+                                    {$a.next.when|escape:'html':'UTF-8'}
+                                    <button type="submit" form="pps-row-form" name="pps_row" value="cancel:{$a.next.id|intval}" class="btn btn-link btn-sm pps-btn-danger"
+                                            data-pps-confirm="{l s='Cancel this schedule?' mod='productscheduler'}" data-pps-confirm-danger="1">{l s='Cancel' mod='productscheduler'}</button>
+                                {else}<span class="pps-sub">&mdash;</span>{/if}
+                            </td>
+                        </tr>
+                    {/foreach}
+                    </tbody>
+                </table>
+            </div>
+            <div class="pps-grid pps-blog-grid">
+                <div class="pps-field">
+                    <label for="pps-b-action">{l s='Action' mod='productscheduler'}</label>
+                    <select id="pps-b-action" name="pps_blog_action" class="form-control" data-pps-blog-action>
+                        <option value="publish">{l s='Publish (set online)' mod='productscheduler'}</option>
+                        <option value="unpublish">{l s='Unpublish (set offline)' mod='productscheduler'}</option>
+                    </select>
+                </div>
+                <div class="pps-field">
+                    <label>{l s='When' mod='productscheduler'}</label>
+                    <label class="pps-check"><input type="radio" name="pps_blog_mode" value="series" checked data-pps-blog-mode> {l s='As a series, one after the other' mod='productscheduler'}</label>
+                    <label class="pps-check"><input type="radio" name="pps_blog_mode" value="at" data-pps-blog-mode> {l s='All at the same time' mod='productscheduler'}</label>
+                </div>
+                <div class="pps-field" data-pps-blog-series>
+                    <label>{l s='Start and rhythm' mod='productscheduler'}</label>
+                    <div class="pps-inline">
+                        <input type="date" name="pps_blog_start" class="form-control" value="{$pps_blog.start|escape:'html':'UTF-8'}" min="{$smarty.now|date_format:'%Y-%m-%d'}" data-pps-blog-start>
+                        <input type="time" name="pps_blog_time" class="form-control" value="{$pps_blog.time|escape:'html':'UTF-8'}" data-pps-blog-time>
+                    </div>
+                    <select name="pps_blog_every" class="form-control pps-mt" data-pps-blog-every>
+                        <option value="1">{l s='one article every day' mod='productscheduler'}</option>
+                        <option value="2">{l s='one article every 2 days' mod='productscheduler'}</option>
+                        <option value="3">{l s='one article every 3 days' mod='productscheduler'}</option>
+                        <option value="7">{l s='one article every week' mod='productscheduler'}</option>
+                    </select>
+                </div>
+                <div class="pps-field" data-pps-blog-at hidden>
+                    <label for="pps-b-at">{l s='Date and time' mod='productscheduler'}</label>
+                    <input type="datetime-local" id="pps-b-at" name="pps_blog_at" class="form-control" step="60" min="{$pps_min_input|escape:'html':'UTF-8'}">
+                </div>
+            </div>
+            <label class="pps-check" data-pps-blog-new-wrap>
+                <input type="checkbox" name="pps_blog_new" value="1" checked>
+                {l s='Show as the newest article: its date becomes the publish day' mod='productscheduler'}
+            </label>
+            <div class="pps-blog-preview" data-pps-blog-preview data-none="{l s='Tick at least one article.' mod='productscheduler'}" data-one="{l s='1 article on %s' mod='productscheduler'}" data-many="{l s='%1$d articles: first on %2$s, last on %3$s' mod='productscheduler'}"></div>
+            <div class="pps-form-foot">
+                <button type="submit" name="submitPpsBlog" value="1" class="btn btn-primary" data-pps-confirm="{l s='Plan the ticked articles?' mod='productscheduler'}">{l s='Plan articles' mod='productscheduler'}</button>
+            </div>
+        </form>
+        {else}
+            <div class="pps-empty-state"><p>{l s='The blog has no articles yet.' mod='productscheduler'}</p></div>
+        {/if}
+    </div>
+    {/if}
+
     <div class="panel pps-panel">
         <div class="panel-heading">
             <i class="icon-calendar"></i> {l s='Schedules' mod='productscheduler'}
@@ -136,6 +228,13 @@
             <input type="hidden" name="f_status" value="{$pps_filters.f_status|escape:'html':'UTF-8'}">
             <input type="search" name="f_q" class="form-control" value="{$pps_filters.f_q|escape:'html':'UTF-8'}"
                    placeholder="{l s='Product name, reference or ID' mod='productscheduler'}">
+            {if $pps_blog.available}
+            <select name="f_type" class="form-control">
+                <option value="">{l s='Products and blog' mod='productscheduler'}</option>
+                <option value="product"{if $pps_filters.f_type == 'product'} selected{/if}>{l s='Products' mod='productscheduler'}</option>
+                <option value="blog"{if $pps_filters.f_type == 'blog'} selected{/if}>{l s='Blog articles' mod='productscheduler'}</option>
+            </select>
+            {/if}
             <select name="f_action" class="form-control">
                 <option value="">{l s='All actions' mod='productscheduler'}</option>
                 <option value="publish"{if $pps_filters.f_action == 'publish'} selected{/if}>{l s='Publish' mod='productscheduler'}</option>
@@ -147,8 +246,8 @@
                 {/foreach}
             </select>
             <button type="submit" class="btn btn-default"><i class="icon-search"></i> {l s='Filter' mod='productscheduler'}</button>
-            {if $pps_filters.f_q || $pps_filters.f_action}
-                <a class="btn btn-link" href="{$pps_status_tabs[$pps_filters.f_status]|escape:'html':'UTF-8'}&amp;f_q=&amp;f_action=">{l s='Reset' mod='productscheduler'}</a>
+            {if $pps_filters.f_q || $pps_filters.f_action || $pps_filters.f_type}
+                <a class="btn btn-link" href="{$pps_status_tabs[$pps_filters.f_status]|escape:'html':'UTF-8'}&amp;f_q=&amp;f_action=&amp;f_type=">{l s='Reset' mod='productscheduler'}</a>
             {/if}
         </form>
 
@@ -185,7 +284,7 @@
                                 <td class="pps-col-check">{if $row.can_manage}<input type="checkbox" name="pps_ids[]" value="{$row.id|intval}" form="pps-bulk-form" data-pps-check>{/if}</td>
                             {/if}
                             <td>
-                                <a class="pps-product" href="{$row.edit_url|escape:'html':'UTF-8'}">{if $row.product_name}{$row.product_name|escape:'html':'UTF-8'}{else}#{$row.id_product|intval}{/if}</a>
+                                {if $row.type == 'blog'}<span class="pps-badge pps-badge-blog">{l s='Blog' mod='productscheduler'}</span> {/if}<a class="pps-product" href="{$row.edit_url|escape:'html':'UTF-8'}">{if $row.product_name}{$row.product_name|escape:'html':'UTF-8'}{else}#{$row.id_product|intval}{/if}</a>
                                 <div class="pps-sub">ID {$row.id_product|intval}{if $row.reference} &middot; {$row.reference|escape:'html':'UTF-8'}{/if}{if $row.employee} &middot; {l s='by' mod='productscheduler'} {$row.employee|escape:'html':'UTF-8'}{/if}</div>
                             </td>
                             {if $pps_multistore}<td>{$row.shop_name|escape:'html':'UTF-8'}</td>{/if}

@@ -56,6 +56,8 @@ a whole collection online at once - per product, in bulk, and per shop.
   - **bulk scheduling**: search and pick products, or paste a list of product IDs (up to 500 at once).
 - **Reliable runner**: cron URL, command-line script, and a fallback that works without any cron
   job. One run at a time, interrupted runs are retried.
+- **Blog articles** (ST Blog module of the Panda / Transformer themes, since 1.2.0): plan written articles as a
+  series - e.g. one article every day at 10:00 - or all at one time; see [Blog articles](#blog-articles).
 - **E-mail report** after each run (optional).
 - **Status overview** everywhere: how many schedules are waiting, the next change, the last run,
   failures, and a warning when no cron job is detected.
@@ -142,6 +144,24 @@ the product form, so saving the product never changes your schedules.
 *Catalog > Scheduled publishing* > **Add schedule**: search products by name / reference / ID and
 click them to add them (they appear as chips), and / or paste product IDs separated by commas,
 spaces or new lines. Then choose the action, date and shops.
+
+### Blog articles
+
+Needs the **ST Blog** module (`stblog`, part of the Panda and Transformer themes); without it the panel is hidden.
+
+*Catalog > Scheduled publishing* > **Plan blog articles** lists every article: state, article date and the next
+planned change (with *Cancel*). Articles that are offline and not planned yet are ticked already.
+
+1. Tick the articles and set their order in the *Order* column (smallest first).
+2. Choose **Publish** (or *Unpublish*) and **When**:
+   - *As a series*: start date, time and rhythm (every day / 2 days / 3 days / week). A new series starts
+     the day after the last planned article, so new articles simply join the end of the queue.
+   - *All at the same time*: one date and time for all.
+3. Keep *Show as the newest article* ticked to set the article date to the publish day (the blog sorts by it).
+4. The line under the form shows the first and the last date before you save. Click **Plan articles**.
+
+At the planned time the article is switched online in `st_blog` and `st_blog_shop`, the blog blocks are told
+about it and the shop caches are cleared, so it appears at once.
 
 ### Times and time zone
 

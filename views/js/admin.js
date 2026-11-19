@@ -412,6 +412,7 @@
             bindQuick(form, cfg, q('[data-pps-at]', form));
             initPicker(form, cfg);
         }
+        initBlog(root);
 
         var all = q('[data-pps-check-all]', root);
         if (all) {
@@ -422,6 +423,54 @@
 
         refreshRelative(root, t);
         window.setInterval(function () { refreshRelative(root, t); }, 30000);
+    }
+
+    /** Blog panel: series or one time, live preview of the dates. */
+    function initBlog(root) {
+        var form = root.querySelector('[data-pps-blog-form]');
+        if (!form) {
+            return;
+        }
+        var q = function (sel) { return form.querySelector(sel); };
+        var all = q('[data-pps-blog-all]');
+        var checks = form.querySelectorAll('[data-pps-blog-check]');
+        var preview = q('[data-pps-blog-preview]');
+        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+        var fmt = function (d) { return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+        var update = function () {
+            var mode = q('[data-pps-blog-mode]:checked').value;
+            q('[data-pps-blog-series]').hidden = mode !== 'series';
+            q('[data-pps-blog-at]').hidden = mode !== 'at';
+            q('[data-pps-blog-new-wrap]').hidden = q('[data-pps-blog-action]').value !== 'publish';
+            var n = Array.prototype.filter.call(checks, function (c) { return c.checked; }).length;
+            if (!n) { preview.textContent = preview.getAttribute('data-none'); return; }
+            var first;
+            var last;
+            if (mode === 'series') {
+                var start = q('[data-pps-blog-start]').value;
+                var time = q('[data-pps-blog-time]').value || '10:00';
+                if (!start) { preview.textContent = ''; return; }
+                first = new Date(start + 'T' + time);
+                last = new Date(first.getTime());
+                last.setDate(last.getDate() + (n - 1) * parseInt(q('[data-pps-blog-every]').value, 10));
+            } else {
+                var at = q('[name=pps_blog_at]').value;
+                if (!at) { preview.textContent = ''; return; }
+                first = new Date(at);
+                last = first;
+            }
+            preview.textContent = n === 1 ? preview.getAttribute('data-one').replace('%s', fmt(first))
+                : preview.getAttribute('data-many').replace('%1$d', n).replace('%2$s', fmt(first)).replace('%3$s', fmt(last));
+        };
+        if (all) {
+            all.addEventListener('change', function () {
+                Array.prototype.forEach.call(checks, function (c) { c.checked = all.checked; });
+                update();
+            });
+        }
+        form.addEventListener('change', update);
+        form.addEventListener('input', update);
+        update();
     }
 
     function initPicker(form, cfg) {

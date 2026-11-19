@@ -18,6 +18,7 @@ if (!defined('_PS_VERSION_')) {
  *   and other modules see a normal product save (hooks, caches, search index). When the object
  *   cannot be saved (e.g. old invalid product data) only the status columns are written.
  * - A run that dies leaves rows in "running"; they are retried after 15 minutes (3 tries).
+ * - Blog articles (ST Blog) are switched by ProductSchedulerBlog; the caches are cleared once per run.
  */
 class ProductSchedulerRunner
 {
@@ -87,17 +88,21 @@ class ProductSchedulerRunner
                 $rows = ProductSchedulerRepository::due($now, $batch >= 1 && $batch <= 1000 ? $batch : 100);
             }
 
+            $blogChanged = false;
             foreach ($rows as $row) {
                 if (!ProductSchedulerRepository::claim((int) $row['id_productscheduler'])) {
                     continue;
                 }
-                list($ok, $message) = self::execute($row);
+                $isBlog = isset($row['type']) && $row['type'] === ProductSchedulerRepository::TYPE_BLOG;
+                list($ok, $message) = $isBlog ? self::executeBlog($row) : self::execute($row);
+                $blogChanged = $blogChanged || ($isBlog && $ok);
                 ProductSchedulerRepository::finish((int) $row['id_productscheduler'], $ok, $message);
 
                 ++$summary['processed'];
                 ++$summary[$ok ? 'done' : 'failed'];
                 $summary['items'][] = [
                     'id' => (int) $row['id_productscheduler'],
+                    'type' => $isBlog ? ProductSchedulerRepository::TYPE_BLOG : ProductSchedulerRepository::TYPE_PRODUCT,
                     'id_product' => (int) $row['id_product'],
                     'id_shop' => (int) $row['id_shop'],
                     'action' => $row['action'],
@@ -107,6 +112,9 @@ class ProductSchedulerRunner
                 ];
             }
 
+            if ($blogChanged) {
+                ProductSchedulerBlog::clearCaches();
+            }
             Configuration::updateGlobalValue('PRODUCTSCHEDULER_LAST_RUN', $now);
             Configuration::updateGlobalValue('PRODUCTSCHEDULER_LAST_SOURCE', $source);
 
@@ -131,6 +139,26 @@ class ProductSchedulerRunner
         }
 
         return $summary;
+    }
+
+    /** Blog article (ST Blog): online / offline in the row's shop or every shop. @return array [bool ok, string message] */
+    private static function executeBlog(array $row)
+    {
+        if (!ProductSchedulerBlog::available()) {
+            return [false, 'The blog module (ST Blog) is not installed.'];
+        }
+        try {
+            return ProductSchedulerBlog::apply(
+                (int) $row['id_product'],
+                $row['action'] === ProductSchedulerRepository::ACTION_PUBLISH ? 1 : 0,
+                (int) $row['mark_new'],
+                (int) $row['id_shop'] > 0 ? [(int) $row['id_shop']] : []
+            );
+        } catch (Exception $e) {
+            return [false, 'Error: ' . $e->getMessage()];
+        } catch (Throwable $e) {
+            return [false, 'Error: ' . $e->getMessage()];
+        }
     }
 
     /** @return array [bool ok, string message] */
@@ -356,8 +384,19 @@ class ProductSchedulerRunner
 
             $htmlRows = '';
             $textRows = '';
+            $blogLabel = $module->l('Blog article', 'productscheduler');
+            $blogIds = [];
             foreach ($summary['items'] as $item) {
-                $name = isset($item['name']) ? $item['name'] : Product::getProductName((int) $item['id_product'], null, $id_lang);
+                if (isset($item['type']) && $item['type'] === ProductSchedulerRepository::TYPE_BLOG) {
+                    $blogIds[] = (int) $item['id_product'];
+                }
+            }
+            $blogNames = ProductSchedulerBlog::names($blogIds, $id_lang);
+            foreach ($summary['items'] as $item) {
+                $isBlog = isset($item['type']) && $item['type'] === ProductSchedulerRepository::TYPE_BLOG;
+                $name = isset($item['name']) ? $item['name'] : ($isBlog
+                    ? $blogLabel . ': ' . (isset($blogNames[(int) $item['id_product']]) ? $blogNames[(int) $item['id_product']] : '#' . (int) $item['id_product'])
+                    : Product::getProductName((int) $item['id_product'], null, $id_lang));
                 $publish = $item['action'] === ProductSchedulerRepository::ACTION_PUBLISH;
                 $label = $publish ? $publishLabel : $unpublishLabel;
                 $state = $item['ok'] ? $okLabel : $failLabel;

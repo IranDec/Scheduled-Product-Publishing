@@ -56,7 +56,7 @@ class AdminProductSchedulerController extends ModuleAdminController
         }
 
         $action = '';
-        foreach (['submitPpsAdd', 'submitPpsRow', 'submitPpsBulk', 'submitPpsRunDue'] as $submit) {
+        foreach (['submitPpsAdd', 'submitPpsBlog', 'submitPpsRow', 'submitPpsBulk', 'submitPpsRunDue'] as $submit) {
             if (Tools::isSubmit($submit)) {
                 $action = $submit;
                 break;
@@ -74,6 +74,9 @@ class AdminProductSchedulerController extends ModuleAdminController
                     break;
                 case 'submitPpsRow':
                     $this->ppsFlash($this->ppsProcessRow(), 'success');
+                    break;
+                case 'submitPpsBlog':
+                    $this->ppsFlash($this->ppsProcessBlog(), 'success');
                     break;
                 case 'submitPpsBulk':
                     $this->ppsFlash($this->ppsProcessBulk(), 'success');
@@ -122,6 +125,39 @@ class AdminProductSchedulerController extends ModuleAdminController
         );
 
         return $this->ppsAddResultText($result);
+    }
+
+    /** Blog articles: one time for all, or a series (one article every N days at a fixed time). */
+    private function ppsProcessBlog()
+    {
+        $ids = Tools::getValue('pps_blog_ids');
+        $ids = is_array($ids) ? array_map('intval', $ids) : [];
+        // the order fields decide the order of a series
+        $order = Tools::getValue('pps_blog_order');
+        if (is_array($order)) {
+            usort($ids, function ($a, $b) use ($order) {
+                return [(int) (isset($order[$a]) ? $order[$a] : 999), $a] <=> [(int) (isset($order[$b]) ? $order[$b] : 999), $b];
+            });
+        }
+        $mode = Tools::getValue('pps_blog_mode') === 'series' ? 'series' : 'at';
+        $res = ProductSchedulerBlog::schedule(
+            $this->module,
+            $ids,
+            (string) Tools::getValue('pps_blog_action'),
+            $mode,
+            (string) Tools::getValue('pps_blog_at'),
+            (string) Tools::getValue('pps_blog_start'),
+            (string) Tools::getValue('pps_blog_time'),
+            (int) Tools::getValue('pps_blog_every', 1),
+            (bool) Tools::getValue('pps_blog_new'),
+            $this->context->employee
+        );
+        $text = $this->ppsAddResultText($res);
+        if ($res['created'] && $mode === 'series') {
+            $text .= ' ' . sprintf($this->ppsT('From %1$s to %2$s.'), $this->module->formatDate($res['first']), $this->module->formatDate($res['last']));
+        }
+
+        return $text;
     }
 
     private function ppsAddResultText(array $result)
@@ -367,6 +403,7 @@ class AdminProductSchedulerController extends ModuleAdminController
         return [
             'f_status' => in_array($status, ['upcoming', 'all', 'done', 'failed', 'cancelled'], true) ? $status : 'upcoming',
             'f_action' => ProductSchedulerRepository::isValidAction($action) ? $action : '',
+            'f_type' => in_array($get('f_type', ''), [ProductSchedulerRepository::TYPE_PRODUCT, ProductSchedulerRepository::TYPE_BLOG], true) ? $get('f_type', '') : '',
             'f_q' => Tools::substr(trim($get('f_q', '')), 0, 100),
             'page' => max(1, (int) $get('page', 1)),
             'n' => in_array($perPage, self::PER_PAGE_OPTIONS, true) ? $perPage : 50,
@@ -385,16 +422,26 @@ class AdminProductSchedulerController extends ModuleAdminController
         $filters = $this->ppsCurrentFilters();
         $shopIds = $this->module->visibleShopIds();
         list($rows, $total) = ProductSchedulerRepository::getList(
-            ['status' => $filters['f_status'], 'action' => $filters['f_action'], 'q' => $filters['f_q']],
+            ['status' => $filters['f_status'], 'action' => $filters['f_action'], 'type' => $filters['f_type'], 'q' => $filters['f_q']],
             $shopIds,
             $filters['page'],
             $filters['n']
         );
         $pages = max(1, (int) ceil($total / $filters['n']));
 
+        $id_lang = (int) $this->context->language->id;
+        $blogNames = ProductSchedulerBlog::names(array_column(array_filter($rows, function ($r) { return isset($r['type']) && $r['type'] === ProductSchedulerRepository::TYPE_BLOG; }), 'id_product'), $id_lang);
         $items = [];
         foreach ($rows as $row) {
             $item = $this->module->formatRow($row);
+            if ($item['type'] === ProductSchedulerRepository::TYPE_BLOG) {
+                $item['product_name'] = isset($blogNames[$item['id_product']]) ? $blogNames[$item['id_product']] : '';
+                $item['shop_name'] = $this->ppsT('All shops');
+                $item['edit_url'] = ProductSchedulerBlog::editUrl($item['id_product']);
+                $item['can_manage'] = ProductSchedulerService::canManageRow($row, $this->context->employee);
+                $items[] = $item;
+                continue;
+            }
             $item['edit_url'] = $this->ppsProductEditUrl((int) $row['id_product']);
             $item['can_manage'] = ProductSchedulerService::canManageRow($row, $this->context->employee);
             $items[] = $item;
@@ -426,7 +473,47 @@ class AdminProductSchedulerController extends ModuleAdminController
             }
         }
 
+        // blog articles (ST Blog) for the planning panel
+        $blog = ['available' => ProductSchedulerBlog::available(), 'articles' => []];
+        if ($blog['available']) {
+            foreach (ProductSchedulerBlog::articles($id_lang, (int) $this->context->shop->id) as $a) {
+                $a['date'] = $this->module->formatDate($a['date_add']);
+                $a['edit_url'] = ProductSchedulerBlog::editUrl($a['id']);
+                $a['next_at'] = $a['next'] ? (string) $a['next']['scheduled_at'] : '';
+                if ($a['next']) {
+                    $a['next'] = ['id' => (int) $a['next']['id_productscheduler'], 'when' => $this->module->formatDate($a['next']['scheduled_at']), 'action' => $a['next']['action']];
+                }
+                $blog['articles'][] = $a;
+            }
+            // planning order: offline and not planned (oldest written first), then planned (by date), then online (newest first)
+            usort($blog['articles'], function ($a, $b) {
+                $group = function ($x) { return $x['active'] ? 2 : ($x['next'] ? 1 : 0); };
+                if ($group($a) !== $group($b)) {
+                    return $group($a) <=> $group($b);
+                }
+                if ($group($a) === 0) {
+                    return [$a['date_add'], $a['id']] <=> [$b['date_add'], $b['id']];
+                }
+                if ($group($a) === 1) {
+                    return strcmp($a['next_at'], $b['next_at']);
+                }
+
+                return [$b['date_add'], $b['id']] <=> [$a['date_add'], $a['id']];
+            });
+            // a new series continues the day after the last planned article (or tomorrow)
+            $last = ProductSchedulerRepository::lastPendingPublish(ProductSchedulerRepository::TYPE_BLOG);
+            $blog['start'] = date('Y-m-d', strtotime(($last !== '' ? substr($last, 0, 10) : date('Y-m-d')) . ' +1 day'));
+            $blog['time'] = $last !== '' ? substr($last, 11, 5) : '10:00';
+            $blog['unplanned'] = count(array_filter($blog['articles'], function ($a) { return !$a['active'] && !$a['next']; }));
+        }
+
         $this->context->smarty->assign([
+            'pps_blog' => $blog,
+            'pps_type_tabs' => [
+                '' => $this->ppsListUrl(array_merge($filters, ['f_type' => '', 'page' => 1])),
+                'product' => $this->ppsListUrl(array_merge($filters, ['f_type' => 'product', 'page' => 1])),
+                'blog' => $this->ppsListUrl(array_merge($filters, ['f_type' => 'blog', 'page' => 1])),
+            ],
             'pps_items' => $items,
             'pps_total' => $total,
             'pps_filters' => $filters,

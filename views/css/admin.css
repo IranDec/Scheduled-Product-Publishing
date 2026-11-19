@@ -727,3 +727,14 @@
 .pps-modal-ok:hover { background: var(--pps-accent-dark); }
 .pps-modal.is-danger .pps-modal-ok { background: var(--pps-bad); }
 .pps-modal.is-danger .pps-modal-ok:hover { background: #a91f1f; }
+
+/* 1.2.0: blog articles */
+.pps-blog-intro { margin: 0 0 12px; }
+.pps-blog-table .pps-col-order { width: 80px; }
+.pps-blog-table .pps-col-order input { width: 64px; }
+.pps-blog-grid { margin-top: 14px; }
+.pps-inline { display: flex; gap: 8px; }
+.pps-badge-blog { background: #ede7f6; color: #5e35b1; }
+.pps-badge-warn { background: var(--pps-warn-bg); color: var(--pps-warn); }
+.pps-blog-preview { margin: 10px 0 0; padding: 10px 14px; border-radius: 8px; background: var(--pps-soft); border: 1px solid var(--pps-line); font-weight: 600; }
+.pps-blog-preview:empty { display: none; }

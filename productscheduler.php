@@ -20,11 +20,12 @@ require_once __DIR__ . '/classes/ProductSchedulerError.php';
 require_once __DIR__ . '/classes/ProductSchedulerRepository.php';
 require_once __DIR__ . '/classes/ProductSchedulerService.php';
 require_once __DIR__ . '/classes/ProductSchedulerRunner.php';
+require_once __DIR__ . '/classes/ProductSchedulerBlog.php';
 
 class ProductScheduler extends Module
 {
     // @author Mohammad Babaei | https://adschi.com
-    const MODULE_VERSION = '1.1.0';
+    const MODULE_VERSION = '1.2.0';
     const AUTHOR_NAME = 'Mohammad Babaei';
     const AUTHOR_URL = 'https://adschi.com';
     const AUTHOR_SITE = 'Adschi.com';
@@ -369,6 +370,7 @@ class ProductScheduler extends Module
 
         return [
             'id' => (int) $row['id_productscheduler'],
+            'type' => isset($row['type']) ? (string) $row['type'] : ProductSchedulerRepository::TYPE_PRODUCT,
             'id_product' => (int) $row['id_product'],
             'product_name' => isset($row['product_name']) ? (string) $row['product_name'] : '',
             'reference' => isset($row['reference']) ? (string) $row['reference'] : '',
@@ -403,6 +405,8 @@ class ProductScheduler extends Module
             'The product is no longer assigned to this shop.' => $this->l('The product is no longer assigned to this shop.'),
             'Interrupted several times - not retried.' => $this->l('Interrupted several times - not retried.'),
             'Unknown action.' => $this->l('Unknown action.'),
+            'Blog article not found (deleted?).' => $this->l('Blog article not found (deleted?).'),
+            'The blog module (ST Blog) is not installed.' => $this->l('The blog module (ST Blog) is not installed.'),
         ];
         if (isset($sentences[$message])) {
             return $sentences[$message];

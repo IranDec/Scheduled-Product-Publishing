@@ -169,6 +169,10 @@ class ProductSchedulerService
         if ((int) $row['id_shop'] > 0) {
             return in_array((int) $row['id_shop'], $allowed, true);
         }
+        if (isset($row['type']) && $row['type'] === ProductSchedulerRepository::TYPE_BLOG) {
+            // blog articles of every shop: employees with access to every shop
+            return !array_diff(array_map('intval', Shop::getShops(false, null, true)), $allowed);
+        }
 
         return !array_diff(ProductSchedulerRepository::productShopIds((int) $row['id_product']), $allowed);
     }

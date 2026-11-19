@@ -12,6 +12,7 @@ if (!defined('_PS_VERSION_')) {
 /**
  * Database access for the schedule table. One row = one action (publish / unpublish) for one
  * product at one time, for one shop (id_shop > 0) or for every shop of the product (id_shop = 0).
+ * Since 1.2.0 a row can also be a blog article (`type` = blog, `id_product` = ST Blog article ID).
  * Dates are stored in the shop's time zone (PS_TIMEZONE), like every PrestaShop date.
  */
 class ProductSchedulerRepository
@@ -20,6 +21,9 @@ class ProductSchedulerRepository
 
     const ACTION_PUBLISH = 'publish';
     const ACTION_UNPUBLISH = 'unpublish';
+
+    const TYPE_PRODUCT = 'product';
+    const TYPE_BLOG = 'blog';
 
     const STATUS_PENDING = 'pending';
     const STATUS_RUNNING = 'running';
@@ -37,6 +41,7 @@ class ProductSchedulerRepository
         return Db::getInstance()->execute('CREATE TABLE IF NOT EXISTS `' . self::table() . '` (
             `id_productscheduler` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
             `id_product` INT(11) UNSIGNED NOT NULL,
+            `type` VARCHAR(16) NOT NULL DEFAULT \'product\',
             `id_shop` INT(11) UNSIGNED NOT NULL DEFAULT 0,
             `action` VARCHAR(16) NOT NULL,
             `scheduled_at` DATETIME NOT NULL,
@@ -50,8 +55,20 @@ class ProductSchedulerRepository
             `date_upd` DATETIME NOT NULL,
             PRIMARY KEY (`id_productscheduler`),
             KEY `idx_due` (`status`, `scheduled_at`),
-            KEY `idx_product` (`id_product`, `status`)
+            KEY `idx_product` (`id_product`, `status`),
+            KEY `idx_type` (`type`, `status`)
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;');
+    }
+
+    /** 1.2.0: column `type` for blog schedules; existing rows are products. */
+    public static function addTypeColumn()
+    {
+        $db = Db::getInstance();
+        if ($db->executeS('SHOW COLUMNS FROM `' . self::table() . '` LIKE \'type\'')) {
+            return true;
+        }
+
+        return $db->execute('ALTER TABLE `' . self::table() . '` ADD `type` VARCHAR(16) NOT NULL DEFAULT \'product\' AFTER `id_product`, ADD KEY `idx_type` (`type`, `status`)');
     }
 
     public static function dropTable()
@@ -68,11 +85,12 @@ class ProductSchedulerRepository
     // Write
     // -----------------------------------------------------------------------
 
-    public static function create($id_product, $id_shop, $action, $scheduledAt, $markNew, $id_employee)
+    public static function create($id_product, $id_shop, $action, $scheduledAt, $markNew, $id_employee, $type = self::TYPE_PRODUCT)
     {
         $now = date('Y-m-d H:i:s');
         $ok = Db::getInstance()->insert(self::TABLE, [
             'id_product' => (int) $id_product,
+            'type' => $type === self::TYPE_BLOG ? self::TYPE_BLOG : self::TYPE_PRODUCT,
             'id_shop' => (int) $id_shop,
             'action' => pSQL($action),
             'scheduled_at' => pSQL($scheduledAt),
@@ -89,10 +107,10 @@ class ProductSchedulerRepository
     }
 
     /** True when the same pending action already exists (double click, repeated bulk import). */
-    public static function pendingExists($id_product, $id_shop, $action, $scheduledAt)
+    public static function pendingExists($id_product, $id_shop, $action, $scheduledAt, $type = self::TYPE_PRODUCT)
     {
         return (bool) Db::getInstance()->getValue('SELECT 1 FROM `' . self::table() . '`
-            WHERE `id_product` = ' . (int) $id_product . ' AND `id_shop` = ' . (int) $id_shop . '
+            WHERE `id_product` = ' . (int) $id_product . ' AND `type` = \'' . pSQL($type) . '\' AND `id_shop` = ' . (int) $id_shop . '
               AND `action` = \'' . pSQL($action) . '\' AND `scheduled_at` = \'' . pSQL($scheduledAt) . '\'
               AND `status` = \'' . self::STATUS_PENDING . '\'', false);
     }
@@ -165,7 +183,33 @@ class ProductSchedulerRepository
 
     public static function deleteForProduct($id_product)
     {
-        return Db::getInstance()->delete(self::TABLE, '`id_product` = ' . (int) $id_product);
+        return Db::getInstance()->delete(self::TABLE, '`id_product` = ' . (int) $id_product . ' AND `type` = \'' . self::TYPE_PRODUCT . '\'');
+    }
+
+    /** [object id => next waiting schedule row] for products or blog articles. */
+    public static function nextPendingFor($type, array $ids)
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (!$ids) {
+            return [];
+        }
+        $out = [];
+        foreach (Db::getInstance()->executeS('SELECT * FROM `' . self::table() . '`
+            WHERE `type` = \'' . pSQL($type) . '\' AND `status` = \'' . self::STATUS_PENDING . '\' AND `id_product` IN (' . implode(',', $ids) . ')
+            ORDER BY `scheduled_at` ASC', true, false) ?: [] as $row) {
+            if (!isset($out[(int) $row['id_product']])) {
+                $out[(int) $row['id_product']] = $row;
+            }
+        }
+
+        return $out;
+    }
+
+    /** Latest waiting publish time of the given type (to continue a series after it), or ''. */
+    public static function lastPendingPublish($type)
+    {
+        return (string) Db::getInstance()->getValue('SELECT MAX(`scheduled_at`) FROM `' . self::table() . '`
+            WHERE `type` = \'' . pSQL($type) . '\' AND `action` = \'' . self::ACTION_PUBLISH . '\' AND `status` = \'' . self::STATUS_PENDING . '\'', false);
     }
 
     public static function purgeHistory($days)
@@ -251,8 +295,8 @@ class ProductSchedulerRepository
         return 'SELECT s.*, pl.`name` AS product_name, p.`reference`, p.`id_shop_default`,
                     e.`firstname`, e.`lastname`, sh.`name` AS shop_name
             FROM `' . self::table() . '` s
-            LEFT JOIN `' . _DB_PREFIX_ . 'product` p ON p.`id_product` = s.`id_product`
-            LEFT JOIN `' . _DB_PREFIX_ . 'product_lang` pl ON pl.`id_product` = s.`id_product`
+            LEFT JOIN `' . _DB_PREFIX_ . 'product` p ON p.`id_product` = s.`id_product` AND s.`type` = \'' . self::TYPE_PRODUCT . '\'
+            LEFT JOIN `' . _DB_PREFIX_ . 'product_lang` pl ON pl.`id_product` = s.`id_product` AND s.`type` = \'' . self::TYPE_PRODUCT . '\'
                 AND pl.`id_lang` = ' . (int) $id_lang . '
                 AND pl.`id_shop` = IF(s.`id_shop` > 0, s.`id_shop`, p.`id_shop_default`)
             LEFT JOIN `' . _DB_PREFIX_ . 'employee` e ON e.`id_employee` = s.`id_employee`
@@ -264,7 +308,7 @@ class ProductSchedulerRepository
         $id_lang = (int) Context::getContext()->language->id;
 
         return Db::getInstance()->executeS(self::selectSql($id_lang) . '
-            WHERE s.`id_product` = ' . (int) $id_product . self::shopFilterSql($shopIds) . '
+            WHERE s.`id_product` = ' . (int) $id_product . ' AND s.`type` = \'' . self::TYPE_PRODUCT . '\'' . self::shopFilterSql($shopIds) . '
             ORDER BY (s.`status` IN (\'' . self::STATUS_PENDING . '\', \'' . self::STATUS_RUNNING . '\')) DESC,
                      s.`scheduled_at` DESC, s.`id_productscheduler` DESC
             LIMIT ' . max(1, (int) $limit), true, false) ?: [];
@@ -273,7 +317,7 @@ class ProductSchedulerRepository
     /**
      * Filtered, paginated list for the list page.
      *
-     * @param array $f status, action, q (name / reference / ID)
+     * @param array $f status, action, type, q (name / reference / ID)
      *
      * @return array [rows, total]
      */
@@ -291,11 +335,16 @@ class ProductSchedulerRepository
         if (isset($f['action']) && self::isValidAction($f['action'])) {
             $where .= ' AND s.`action` = \'' . pSQL($f['action']) . '\'';
         }
+        if (isset($f['type']) && in_array($f['type'], [self::TYPE_PRODUCT, self::TYPE_BLOG], true)) {
+            $where .= ' AND s.`type` = \'' . pSQL($f['type']) . '\'';
+        }
         $q = isset($f['q']) ? trim((string) $f['q']) : '';
         if ($q !== '') {
             $like = '\'%' . pSQL(addcslashes($q, '%_\\')) . '%\'';
+            $blogIds = ProductSchedulerBlog::search($q, $id_lang);
             $where .= ' AND (pl.`name` LIKE ' . $like . ' OR p.`reference` LIKE ' . $like
-                . (ctype_digit($q) ? ' OR s.`id_product` = ' . (int) $q : '') . ')';
+                . (ctype_digit($q) ? ' OR s.`id_product` = ' . (int) $q : '')
+                . ($blogIds ? ' OR (s.`type` = \'' . self::TYPE_BLOG . '\' AND s.`id_product` IN (' . implode(',', $blogIds) . '))' : '') . ')';
         }
 
         $order = $status === 'upcoming'
@@ -306,8 +355,8 @@ class ProductSchedulerRepository
 
         $db = Db::getInstance();
         $total = (int) $db->getValue('SELECT COUNT(*) FROM `' . self::table() . '` s
-            LEFT JOIN `' . _DB_PREFIX_ . 'product` p ON p.`id_product` = s.`id_product`
-            LEFT JOIN `' . _DB_PREFIX_ . 'product_lang` pl ON pl.`id_product` = s.`id_product`
+            LEFT JOIN `' . _DB_PREFIX_ . 'product` p ON p.`id_product` = s.`id_product` AND s.`type` = \'' . self::TYPE_PRODUCT . '\'
+            LEFT JOIN `' . _DB_PREFIX_ . 'product_lang` pl ON pl.`id_product` = s.`id_product` AND s.`type` = \'' . self::TYPE_PRODUCT . '\'
                 AND pl.`id_lang` = ' . $id_lang . '
                 AND pl.`id_shop` = IF(s.`id_shop` > 0, s.`id_shop`, p.`id_shop_default`)' . $where, false);
 
